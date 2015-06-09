@@ -10,9 +10,9 @@ class test_kafka(transport.TransportCase):
 
     def before_connect(self):
         try:
-            import kafka  # noqa
+            import pykafka  # noqa
         except ImportError:
-            raise SkipTest('kafka not installed')
+            raise SkipTest('pykafka not installed')
 
     def after_connect(self, connection):
         connection.channel().client

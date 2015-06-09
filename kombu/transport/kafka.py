@@ -37,8 +37,6 @@ from . import virtual
 try:
     import pykafka
     from pykafka import KafkaClient
-    from kafka.consumer import SimpleConsumer
-    from kafka.producer import SimpleProducer
 
     KAFKA_CONNECTION_ERRORS = ()
     KAFKA_CHANNEL_ERRORS = ()
@@ -50,6 +48,15 @@ except ImportError:
 DEFAULT_PORT = 9092
 
 __author__ = 'Mahendra M <mahendra.m@gmail.com>'
+
+
+"""
+TODO some config
+let us delete:
+delete.topic.enable=true
+MessageSizeTooLarge
+http://stackoverflow.com/questions/21020347/kafka-sending-a-15mb-message
+"""
 
 
 class Channel(virtual.Channel):
@@ -64,21 +71,18 @@ class Channel(virtual.Channel):
 
         producer = self._kafka_producers.get(queue, None)
         if producer is None:
-            producer = SimpleProducer(self.client, queue)
+            producer = self.client.topics[queue].get_producer()
             self._kafka_producers[queue] = producer
 
         return producer
 
     def _get_consumer(self, queue):
-        """
-        Create/get a consumer instance for the given topic/queue
-        """
+        """Create/get a consumer instance for the given topic/queue"""
+
         consumer = self._kafka_consumers.get(queue, None)
         if consumer is None:
-            consumer = SimpleConsumer(self.client, self._kafka_group, queue,
-                                      auto_commit=True,
-                                      auto_commit_every_n=20,
-                                      auto_commit_every_t=5000)
+            consumer = self.client.topics[queue].get_simple_consumer(
+                consumer_group="temp")
             self._kafka_consumers[queue] = consumer
 
         return consumer
@@ -86,25 +90,25 @@ class Channel(virtual.Channel):
     def _put(self, queue, message, **kwargs):
         """Put a message on the topic/queue"""
         producer = self._get_producer(queue)
-        producer.send_messages(dumps(message))
+        producer.produce([dumps(message)])
 
     def _get(self, queue):
         """Get a message from the topic/queue"""
         consumer = self._get_consumer(queue)
 
-        msgs = consumer.get_messages(count=1)
-        if not msgs:
+        msg = consumer.consume(block=False)
+        if not msg:
             raise Empty()
 
-        return loads(msgs[0].message.value)
+        return loads(msg.value)
 
     def _purge(self, queue):
         """Purge all pending messages in the topic/queue"""
-        consumer = self._get_consumer(queue)
-
-        # Seek to the end of the queue and commit
-        consumer.seek(0, 2)
-        consumer.commit()
+        # TODO broken in lib but something like
+        # consumer = self._get_consumer(queue)
+        # for op, p in consumer.partitions.items():
+        #     op.set_offset(p.latest_available_offsets())
+        pass
 
     def _delete(self, queue, *args, **kwargs):
         """Delete a queue/topic"""
@@ -116,7 +120,7 @@ class Channel(virtual.Channel):
     def _size(self, queue):
         """Gets the number of pending messages in the topic/queue"""
         consumer = self._get_consumer(queue)
-        return consumer.pending()
+        return sum([o.message_count for o in consumer.partitions.keys()])
 
     def _new_queue(self, queue, **kwargs):
         """Create a new queue if it does not exist"""
@@ -125,20 +129,14 @@ class Channel(virtual.Channel):
 
     def _has_queue(self, queue):
         """Check if a queue already exists"""
-
-        client = self._open()
-
-        # TODO: This must be made as a public API in the kafka library
-        client._load_metadata_for_topics()
-        exists = queue in client.topic_partitions
-        client.close()
-
-        return exists
+        return queue in self.client.topics
 
     def _open(self):
         conninfo = self.connection.client
         port = conninfo.port or DEFAULT_PORT
-        client = KafkaClient(hosts="%s:%s" % (conninfo.hostname, port))
+        # client = KafkaClient(hosts="%s:%s" % (conninfo.hostname, port))
+        # TODO obvs don't hard code this
+        client = KafkaClient(hosts="192.168.59.103:32795")
         return client
 
     @property
