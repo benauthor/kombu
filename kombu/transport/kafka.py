@@ -29,14 +29,14 @@ import socket
 
 from anyjson import loads, dumps
 
-from kombu.exceptions import StdConnectionError, StdChannelError
+from amqp import ConnectionError, ChannelError
 from kombu.five import Empty
 
 from . import virtual
 
 try:
-    import kafka
-    from kafka.client import KafkaClient
+    import pykafka
+    from pykafka import KafkaClient
     from kafka.consumer import SimpleConsumer
     from kafka.producer import SimpleProducer
 
@@ -77,8 +77,8 @@ class Channel(virtual.Channel):
         if consumer is None:
             consumer = SimpleConsumer(self.client, self._kafka_group, queue,
                                       auto_commit=True,
-                                      auto_commit_every_n = 20,
-                                      auto_commit_every_t = 5000)
+                                      auto_commit_every_n=20,
+                                      auto_commit_every_t=5000)
             self._kafka_consumers[queue] = consumer
 
         return consumer
@@ -138,7 +138,7 @@ class Channel(virtual.Channel):
     def _open(self):
         conninfo = self.connection.client
         port = conninfo.port or DEFAULT_PORT
-        client = KafkaClient(conninfo.hostname, int(port))
+        client = KafkaClient(hosts="%s:%s" % (conninfo.hostname, port))
         return client
 
     @property
@@ -153,16 +153,16 @@ class Transport(virtual.Transport):
     Channel = Channel
     polling_interval = 1
     default_port = DEFAULT_PORT
-    connection_errors = (StdConnectionError, ) + KAFKA_CONNECTION_ERRORS
-    channel_errors = (StdChannelError, socket.error) + KAFKA_CHANNEL_ERRORS
+    connection_errors = (ConnectionError, ) + KAFKA_CONNECTION_ERRORS
+    channel_errors = (ChannelError, socket.error) + KAFKA_CHANNEL_ERRORS
     driver_type = 'kafka'
     driver_name = 'kafka'
 
     def __init__(self, *args, **kwargs):
-        if kafka is None:
+        if pykafka is None:
             raise ImportError('The kafka library is not installed')
 
         super(Transport, self).__init__(*args, **kwargs)
 
     def driver_version(self):
-        return kafka.__version__
+        return pykafka.__version__
