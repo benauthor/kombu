@@ -100,32 +100,35 @@ class Channel(virtual.Channel):
         if not msg:
             raise Empty()
 
+        # TODO this is not efficient
+        consumer.commit_offsets()
         return loads(msg.value)
 
     def _purge(self, queue):
         """Purge all pending messages in the topic/queue"""
-        # TODO broken in lib but something like
-        # consumer = self._get_consumer(queue)
-        # for op, p in consumer.partitions.items():
-        #     op.set_offset(p.latest_available_offsets())
-        pass
+        consumer = self._get_consumer(queue)
 
-    def _delete(self, queue, *args, **kwargs):
-        """Delete a queue/topic"""
+        purged = 0
+        for op, p in consumer.partitions.items():
+            end = p.latest_available_offset()
+            purged += (end - op.last_offset_consumed)
+            purged += (end - op.last_offset_consumed)
+            op.set_offset(end)
 
-        # We will just let it go through. There is no API defined yet
-        # for deleting a queue/topic
-        pass
+        consumer.commit_offsets()
+        # TODO off by one error somewhere?
+        purged = purged - 1  # :/ ???
+        return purged
 
     def _size(self, queue):
         """Gets the number of pending messages in the topic/queue"""
         consumer = self._get_consumer(queue)
         return sum([o.message_count for o in consumer.partitions.keys()])
 
-    def _new_queue(self, queue, **kwargs):
-        """Create a new queue if it does not exist"""
-        # Just create a producer, the queue will be created automatically
-        self._get_producer(queue)
+    # def _new_queue(self, queue, **kwargs):
+    #     """Create a new queue if it does not exist"""
+    #     # Just create a producer, the queue will be created automatically
+    #     self._get_producer(queue)
 
     def _has_queue(self, queue):
         """Check if a queue already exists"""
@@ -136,7 +139,7 @@ class Channel(virtual.Channel):
         port = conninfo.port or DEFAULT_PORT
         # client = KafkaClient(hosts="%s:%s" % (conninfo.hostname, port))
         # TODO obvs don't hard code this
-        client = KafkaClient(hosts="192.168.59.103:32795")
+        client = KafkaClient(hosts="192.168.59.103:32780")
         return client
 
     @property
