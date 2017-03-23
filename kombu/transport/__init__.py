@@ -35,6 +35,7 @@ TRANSPORT_ALIASES = {
     'sentinel': 'kombu.transport.redis:SentinelTransport',
     'consul': 'kombu.transport.consul:Transport',
     'etcd': 'kombu.transport.etcd:Transport',
+    'kafka': 'kombu.transport.kafka:Transport',
 }
 
 _transport_cache = {}
