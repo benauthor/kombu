@@ -5,17 +5,25 @@ Exchange is a topic
 Queue is a consumer group
 Routing Key -- maybe we can get kafka's message key to work?
 ??? or something
+
+some prior art https://github.com/BenjaminDavison/kombu/pull/1
+
+TODO queue naming needs to serialize/deser into something kafka legal
+http://stackoverflow.com/questions/37062904/what-are-apache-kafka-topic-name-limitations
+pressingly, @ sign
 """
 from __future__ import absolute_import, unicode_literals
 
-from kafka import KafkaProducer
+from kafka import KafkaProducer, KafkaConsumer
 
-from kombu.five import Queue, values
+from kombu.five import Queue, values, Empty
 
 from . import base
 from . import virtual
 
 DEFAULT_PORT = 9092
+
+_CONSUMER_GROUP = "kombu"
 
 
 class Channel(virtual.Channel):
@@ -24,7 +32,7 @@ class Channel(virtual.Channel):
         super(Channel, self).__init__(connection, **kwargs)
         self._connection = connection
         self._producer = None
-        self._consumer = None
+        self._consumers = {}
 
     def _get_connect_string(self):
         host = self._connection.client.hostname or "localhost"
@@ -38,9 +46,25 @@ class Channel(virtual.Channel):
             )
         return self._producer
 
+    def _get_consumer(self, queue):
+        if queue not in self._consumers:
+            self._consumers[queue] = KafkaConsumer(
+                queue,
+                bootstrap_servers=self._get_connect_string(),
+                # TODO this will differ depending on fanout
+                # or otherwise
+                # group=_CONSUMER_GROUP,
+            )
+        return self._consumers[queue]
+
     def _get(self, queue, timeout=None):
         """Get next message from `queue`."""
-        raise NotImplementedError('Virtual channels must implement _get')
+        # TODO -internal batching, is this efficient,
+        # maybe try a few times?
+        try:
+            return next(self._get_consumer(queue))
+        except StopIteration:
+            raise Empty()
 
     def _put(self, queue, message):
         """Put `message` onto `queue`."""
